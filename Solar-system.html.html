@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Solar System</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    overflow: hidden;
+    background: #02030a;
+    color: white;
+    font-family: Arial, sans-serif;
+}
+
+canvas {
+    display: block;
+}
+
+#title {
+    position: fixed;
+    top: 20px;
+    width: 100%;
+    text-align: center;
+    font-size: 25px;
+    letter-spacing: 5px;
+    pointer-events: none;
+    z-index: 2;
+}
+
+#hint {
+    position: fixed;
+    bottom: 90px;
+    width: 100%;
+    text-align: center;
+    color: #b7c0d4;
+    font-size: 12px;
+    pointer-events: none;
+}
+
+#controls {
+    position: fixed;
+    bottom: 25px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    z-index: 5;
+}
+
+button {
+    padding: 12px 16px;
+    border-radius: 25px;
+    border: 1px solid #71809c;
+    background: rgba(15, 23, 43, 0.95);
+    color: white;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+button:hover {
+    background: #354b70;
+}
+
+#info {
+    display: none;
+    position: fixed;
+    top: 85px;
+    right: 20px;
+    width: 230px;
+    padding: 18px;
+    background: rgba(9, 15, 32, 0.94);
+    border: 1px solid #71809c;
+    border-radius: 12px;
+    z-index: 5;
+}
+
+#info h2 {
+    color: #f5ce85;
+    margin-bottom: 10px;
+}
+
+#info p {
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+#closeInfo {
+    margin-top: 12px;
+    padding: 7px 14px;
+}
+
+@media(max-width: 600px) {
+    #title {
+        font-size: 18px;
+    }
+
+    #info {
+        right: 10px;
+        top: 65px;
+        width: 190px;
+    }
+
+    button {
+        padding: 10px 12px;
+        font-size: 12px;
+    }
+}
+</style>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+
+<body>
+
+<div id="title">THE SOLAR SYSTEM</div>
+
+<div id="info">
+    <h2 id="planetName"></h2>
+    <p id="planetFact"></p>
+    <button id="closeInfo">Close</button>
+</div>
+
+<div id="hint">
+    Drag to rotate • Scroll to zoom • Click planets for details
+</div>
+
+<div id="controls">
+    <button id="zoomIn">＋ Zoom In</button>
+    <button id="zoomOut">－ Zoom Out</button>
+    <button id="reset">Reset</button>
+</div>
+
+<script type="module">
+
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+/* =================================
+   1. SCENE
+================================= */
+
+const scene = new THREE.Scene();
+
+scene.background = new THREE.Color(0x02030a);
+
+const camera = new THREE.PerspectiveCamera(
+    45,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+);
+
+const INITIAL_DISTANCE = 85;
+
+camera.position.set(0, 35, INITIAL_DISTANCE);
+
+const renderer = new THREE.WebGLRenderer({
+    antialias: true
+});
+
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+renderer.setPixelRatio(
+    Math.min(window.devicePixelRatio, 2)
+);
+
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+renderer.toneMapping = THREE.NoToneMapping;
+
+document.body.appendChild(renderer.domElement);
+
+
+/* =================================
+   2. CAMERA AND ZOOM
+================================= */
+
+const controls = new OrbitControls(
+    camera,
+    renderer.domElement
+);
+
+controls.target.set(0, 0, 0);
+
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+
+controls.enableZoom = true;
+controls.zoomSpeed = 1.2;
+
+controls.minDistance = 12;
+controls.maxDistance = 180;
+
+controls.enablePan = false;
+
+controls.update();
+
+
+function zoomCamera(factor) {
+
+    const direction = new THREE.Vector3();
+
+    direction.subVectors(camera.position, controls.target);
+
+    const distance = direction.length();
+
+    const newDistance = THREE.MathUtils.clamp(
+        distance * factor,
+        controls.minDistance,
+        controls.maxDistance
+    );
+
+    direction.setLength(newDistance);
+
+    camera.position.copy(
+        controls.target.clone().add(direction)
+    );
+
+    controls.update();
+}
+
+document.getElementById("zoomIn").addEventListener(
+    "click",
+    () => zoomCamera(0.8)
+);
+
+document.getElementById("zoomOut").addEventListener(
+    "click",
+    () => zoomCamera(1.25)
+);
+
+
+/* =================================
+   3. LIGHTS
+================================= */
+
+scene.add(
+    new THREE.AmbientLight(0xffffff, 1.2)
+);
+
+const sunLight = new THREE.PointLight(
+    0xffffff,
+    1800,
+    250
+);
+
+sunLight.position.set(0, 0, 0);
+
+scene.add(sunLight);
+
+
+/* =================================
+   4. STARS
+================================= */
+
+const starGeometry = new THREE.BufferGeometry();
+
+const starPositions = [];
+
+for (let i = 0; i < 12000; i++) {
+
+    starPositions.push(
+        (Math.random() - 0.5) * 450,
+        (Math.random() - 0.5) * 450,
+        (Math.random() - 0.5) * 450
+    );
+}
+
+starGeometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(starPositions, 3)
+);
+
+const starMaterial = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 0.55
+});
+
+const stars = new THREE.Points(
+    starGeometry,
+    starMaterial
+);
+
+scene.add(stars);
+
+
+/* =================================
+   5. PROCEDURAL PLANET TEXTURES
+================================= */
+
+function makeTexture(baseColor, type) {
+
+    const canvas = document.createElement("canvas");
+
+    canvas.width = 1024;
+    canvas.height = 512;
+
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(0, 0, 1024, 512);
+
+    if (type === "striped") {
+
+        for (let i = 0; i < 45; i++) {
+
+            ctx.fillStyle = i % 2 === 0
+                ? "rgba(255,255,255,0.18)"
+                : "rgba(40,20,10,0.14)";
+
+            ctx.fillRect(
+                0,
+                i * 12,
+                1024,
+                5 + Math.random() * 12
+            );
+        }
+    }
+
+    for (let i = 0; i < 1000; i++) {
+
+        const x = Math.random() * 1024;
+        const y = Math.random() * 512;
+
+        const radius = Math.random() * 5 + 1;
+
+        ctx.fillStyle = Math.random() > 0.5
+            ? "rgba(255,255,255,0.10)"
+            : "rgba(0,0,0,0.10)";
+
+        ctx.beginPath();
+
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+
+        ctx.fill();
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+
+    texture.colorSpace = THREE.SRGBColorSpace;
+
+    return texture;
+}
+
+
+/* =================================
+   6. SUN
+================================= */
+
+const sunGeometry = new THREE.SphereGeometry(
+    3.5,
+    64,
+    64
+);
+
+const sunTexture = makeTexture("#ff9d18", "striped");
+
+const sunMaterial = new THREE.MeshBasicMaterial({
+    map: sunTexture,
+    color: 0xffa52a
+});
+
+const sun = new THREE.Mesh(
+    sunGeometry,
+    sunMaterial
+);
+
+scene.add(sun);
+
+
+/* Sun glow */
+
+const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(4.2, 48, 48),
+
+    new THREE.MeshBasicMaterial({
+        color: 0xffa52a,
+        transparent: true,
+        opacity: 0.10,
+        side: THREE.BackSide
+    })
+);
+
+sun.add(glow);
+
+
+/* =================================
+   7. PLANET INFORMATION
+================================= */
+
+const planetData = [
+
+    {
+        name: "Mercury",
+        size: 0.65,
+        distance: 7,
+        color: "#aaa49a",
+        speed: 0.90,
+        textureType: "rocky",
+        fact: "Mercury is the closest planet to the Sun."
+    },
+
+    {
+        name: "Venus",
+        size: 0.95,
+        distance: 10,
+        color: "#d9a95f",
+        speed: 0.70,
+        textureType: "cloudy",
+        fact: "Venus is the hottest planet in our Solar System."
+    },
+
+    {
+        name: "Earth",
+        size: 1.05,
+        distance: 14,
+        color: "#2879c9",
+        speed: 0.55,
+        textureType: "earth",
+        fact: "Earth is our home planet. It has oceans and life."
+    },
+
+    {
+        name: "Mars",
+        size: 0.82,
+        distance: 18,
+        color: "#d65b35",
+        speed: 0.42,
+        textureType: "rocky",
+        fact: "Mars is known as the Red Planet."
+    },
+
+    {
+        name: "Jupiter",
+        size: 2.5,
+        distance: 25,
+        color: "#cba77f",
+        speed: 0.25,
+        textureType: "striped",
+        fact: "Jupiter is the largest planet in our Solar System."
+    },
+
+    {
+        name: "Saturn",
+        size: 2.1,
+        distance: 32,
+        color: "#d6bd87",
+        speed: 0.19,
+        textureType: "striped",
+        fact: "Saturn is famous for its beautiful rings."
+    },
+
+    {
+        name: "Uranus",
+        size: 1.5,
+        distance: 39,
+        color: "#8bd8e4",
+        speed: 0.13,
+        textureType: "cloudy",
+        fact: "Uranus rotates on its side."
+    },
+
+    {
+        name: "Neptune",
+        size: 1.45,
+        distance: 46,
+        color: "#315de0",
+        speed: 0.10,
+        textureType: "cloudy",
+        fact: "Neptune is a distant blue planet."
+    }
+
+];
+
+
+/* =================================
+   8. CREATE PLANETS AND ORBITS
+================================= */
+
+const planets = [];
+
+planetData.forEach((data) => {
+
+    /* Orbit path */
+
+    const orbitPoints = [];
+
+    for (let i = 0; i < 200; i++) {
+
+        const angle = (i / 200) * Math.PI * 2;
+
+        orbitPoints.push(
+            new THREE.Vector3(
+                Math.cos(angle) * data.distance,
+                0,
+                Math.sin(angle) * data.distance
+            )
+        );
+    }
+
+    const orbitGeometry = new THREE.BufferGeometry()
+        .setFromPoints(orbitPoints);
+
+    const orbit = new THREE.LineLoop(
+        orbitGeometry,
+
+        new THREE.LineBasicMaterial({
+            color: 0x59647b,
+            transparent: true,
+            opacity: 0.55
+        })
+    );
+
+    scene.add(orbit);
+
+
+    /* Orbit group */
+
+    const orbitGroup = new THREE.Group();
+
+    scene.add(orbitGroup);
+
+
+    /* Planet surface */
+
+    const geometry = new THREE.SphereGeometry(
+        data.size,
+        64,
+        64
+    );
+
+    const texture = makeTexture(
+        data.color,
+        data.textureType
+    );
+
+    const material = new THREE.MeshStandardMaterial({
+        map: texture,
+        roughness: 0.9,
+        metalness: 0
+    });
+
+    const planet = new THREE.Mesh(
+        geometry,
+        material
+    );
+
+    planet.position.x = data.distance;
+
+    planet.userData.info = data;
+
+    orbitGroup.add(planet);
+
+
+    /* Saturn rings */
+
+    if (data.name === "Saturn") {
+
+        const ring = new THREE.Mesh(
+
+            new THREE.RingGeometry(2.7, 4.1, 100),
+
+            new THREE.MeshBasicMaterial({
+                color: 0xd4bd91,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.9
+            })
+
+        );
+
+        ring.rotation.x = Math.PI / 2.25;
+
+        planet.add(ring);
+    }
+
+
+    /* Earth atmosphere */
+
+    if (data.name === "Earth") {
+
+        const atmosphere = new THREE.Mesh(
+
+            new THREE.SphereGeometry(
+                data.size * 1.08,
+                48,
+                48
+            ),
+
+            new THREE.MeshBasicMaterial({
+                color: 0x399eff,
+                transparent: true,
+                opacity: 0.13,
+                side: THREE.BackSide
+            })
+
+        );
+
+        planet.add(atmosphere);
+
+
+        /* Moon */
+
+        const moonOrbit = new THREE.Group();
+
+        planet.add(moonOrbit);
+
+        const moon = new THREE.Mesh(
+
+            new THREE.SphereGeometry(0.27, 32, 32),
+
+            new THREE.MeshStandardMaterial({
+                color: 0xc9c9c9,
+                roughness: 1
+            })
+
+        );
+
+        moon.position.x = 1.8;
+
+        moonOrbit.add(moon);
+
+        planet.userData.moonOrbit = moonOrbit;
+    }
+
+
+    planets.push({
+        planet: planet,
+        group: orbitGroup,
+        speed: data.speed
+    });
+
+});
+
+
+/* =================================
+   9. ASTEROID BELT
+================================= */
+
+const asteroidPositions = [];
+
+for (let i = 0; i < 1800; i++) {
+
+    const angle = Math.random() * Math.PI * 2;
+
+    const distance = 20.5 + Math.random() * 2.5;
+
+    asteroidPositions.push(
+        Math.cos(angle) * distance,
+        (Math.random() - 0.5) * 0.6,
+        Math.sin(angle) * distance
+    );
+}
+
+const asteroidGeometry = new THREE.BufferGeometry();
+
+asteroidGeometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(
+        asteroidPositions,
+        3
+    )
+);
+
+const asteroidBelt = new THREE.Points(
+
+    asteroidGeometry,
+
+    new THREE.PointsMaterial({
+        color: 0xb5a18a,
+        size: 0.12
+    })
+
+);
+
+scene.add(asteroidBelt);
+
+
+/* =================================
+   10. CLICK PLANETS FOR DETAILS
+================================= */
+
+const raycaster = new THREE.Raycaster();
+
+const mouse = new THREE.Vector2();
+
+let pointerDownX = 0;
+let pointerDownY = 0;
+
+renderer.domElement.addEventListener(
+    "pointerdown",
+    (event) => {
+
+        pointerDownX = event.clientX;
+        pointerDownY = event.clientY;
+
+    }
+);
+
+renderer.domElement.addEventListener(
+    "pointerup",
+    (event) => {
+
+        const moved = Math.hypot(
+            event.clientX - pointerDownX,
+            event.clientY - pointerDownY
+        );
+
+        if (moved > 5) return;
+
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+
+        const planetMeshes = planets.map(
+            item => item.planet
+        );
+
+        const hits = raycaster.intersectObjects(
+            planetMeshes,
+            false
+        );
+
+        if (hits.length > 0) {
+
+            const data = hits[0].object.userData.info;
+
+            document.getElementById("planetName").textContent =
+                data.name;
+
+            document.getElementById("planetFact").textContent =
+                data.fact;
+
+            document.getElementById("info").style.display =
+                "block";
+        }
+
+    }
+);
+
+document.getElementById("closeInfo").addEventListener(
+    "click",
+    () => {
+        document.getElementById("info").style.display = "none";
+    }
+);
+
+
+/* =================================
+   11. RESET CAMERA
+================================= */
+
+document.getElementById("reset").addEventListener(
+    "click",
+    () => {
+
+        camera.position.set(0, 35, INITIAL_DISTANCE);
+
+        controls.target.set(0, 0, 0);
+
+        controls.update();
+
+        document.getElementById("info").style.display = "none";
+
+    }
+);
+
+
+/* =================================
+   12. ANIMATION
+================================= */
+
+function animate() {
+
+    requestAnimationFrame(animate);
+
+
+    /* Sun rotation */
+
+    sun.rotation.y += 0.002;
+
+
+    /* Planet orbits and rotation */
+
+    planets.forEach((item) => {
+
+        item.group.rotation.y += item.speed * 0.003;
+
+        item.planet.rotation.y += 0.012;
+
+        if (item.planet.userData.moonOrbit) {
+
+            item.planet.userData.moonOrbit.rotation.y += 0.025;
+        }
+
+    });
+
+
+    /* Asteroid belt movement */
+
+    asteroidBelt.rotation.y += 0.0002;
+
+
+    /* Camera controls */
+
+    controls.update();
+
+
+    /* Render */
+
+    renderer.render(scene, camera);
+
+}
+
+animate();
+
+
+/* =================================
+   13. RESPONSIVE SCREEN
+================================= */
+
+window.addEventListener("resize", () => {
+
+    camera.aspect =
+        window.innerWidth / window.innerHeight;
+
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(
+        window.innerWidth,
+        window.innerHeight
+    );
+
+});
+
+</script>
+
+
+
+</body>
+</html>
